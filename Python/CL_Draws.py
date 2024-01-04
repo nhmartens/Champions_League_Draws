@@ -3,6 +3,7 @@ import time
 computedProbabilities = {}
 fullCompatibilityMatrix = []
 
+
 seasonLog = {}
 seasonId = 0
 
