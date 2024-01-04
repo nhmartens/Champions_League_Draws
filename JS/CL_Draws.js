@@ -294,7 +294,6 @@ function computeProbabilities(compatibilityMatrix, unmatchedRunnerUp) {
 	if (unmatchedRunnerUp == undefined) {
 		saveProbabilities(id, probabilities);
 	}
-
 	return probabilities;
 }
 
@@ -371,4 +370,4 @@ const numberOfElements = Object.keys(computedProbabilities).length;
 console.log(numberOfElements);
 console.log(a);
 console.profileEnd();
-
+//console.log(computeProbabilities([[false, true, true], [true, false, true], [true, true, false]]));

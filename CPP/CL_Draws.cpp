@@ -12,19 +12,24 @@ constexpr static char numTeams = 8;
 double counter = 0.0;
 template <typename T>
 using Matrix = std::vector<std::vector<T>>;
+uint count = 0;
 
 const static std::array<std::array<std::string, 2>, numTeams> winners = {{{"A","DE"}, {"B","EN"}, {"C","ES"}, {"D","ES"}, {"E","ES"}, {"F","DE"}, {"G","EN"}, {"H","ES"}}};
-const static std::array<std::array<std::string, 2>, numTeams> runnersUp = {{{"A","DEN"}, {"B","NE"}, {"C","IT"}, {"D","IT"}, {"E","IT"}, {"F","FR"}, {"G","DE"}, {"H","PR"}}};
+const static std::array<std::array<std::string, 2>, numTeams> runnersUp = {{{"A","DEN"}, {"B","DEN"}, {"C","IT"}, {"D","IT"}, {"E","IT"}, {"F","FR"}, {"G","DE"}, {"H","PR"}}};
 
 
 static std::unordered_map<std::bitset<128>, Matrix<double>> computedProbabilities;
 static std::unordered_map<std::bitset<128>, bool> computedDeadEnds;
-//std::array<std::array<bool, numTeams>, numTeams> fullCompatibilityMatrix;
+
 static Matrix<bool> fullCompatibilityMatrix(numTeams, std::vector<bool>(numTeams, false));
 //static std::string seasonId = "0";
 static std::bitset<128> seasonId;
 static std::unordered_map<std::bitset<128>, std::set<std::string>> seasonLog;
 
+struct LoadedValue {
+    bool SavedValue = false;
+    bool DeadEnd = false;
+};
 
 template <typename T>
 void printMatrix (const Matrix<T>& matrix) {
@@ -159,30 +164,25 @@ void generateSortedId(const Matrix<bool>& compatibilityMatrix,
 
 }
 
-std::string idToString(const std::vector<uint_fast16_t>& id) {
-    //auto start = std::chrono::high_resolution_clock::now();
-    std::string str;
-    str.reserve(4*id.size());
-    std::stringstream ss(str);
-    //std::stringstream ss;
-    auto size = static_cast<uint_fast16_t>(id.size());
+// std::string idToString(const std::vector<uint_fast16_t>& id) {
+//     std::string str;
+//     str.reserve(4*id.size());
+//     std::stringstream ss(str);
+//     auto size = static_cast<uint_fast16_t>(id.size());
 
-    for (uint_fast16_t i = 0; i < size; ++i) {
-        if (id[i] < 16) {
-            ss << std::setfill('0') << std::setw(4) << std::hex << id[i];
-        } else if (id[i] < 256) {
-            ss << std::setfill('0') << std::setw(3) << std::hex << id[i];
-        } else if (id[i] < 4096) {
-            ss << std::setfill('0') << std::setw(2) << std::hex << id[i];
-        } else {
-            ss << std::hex << id[i];
-        }
-    }
-    //auto end = std::chrono::high_resolution_clock::now();
-    //auto d = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    //counter += d.count();
-    return ss.str();
-}
+//     for (uint_fast16_t i = 0; i < size; ++i) {
+//         if (id[i] < 16) {
+//             ss << std::setfill('0') << std::setw(4) << std::hex << id[i];
+//         } else if (id[i] < 256) {
+//             ss << std::setfill('0') << std::setw(3) << std::hex << id[i];
+//         } else if (id[i] < 4096) {
+//             ss << std::setfill('0') << std::setw(2) << std::hex << id[i];
+//         } else {
+//             ss << std::hex << id[i];
+//         }
+//     }
+//     return ss.str();
+// }
 
 
 std::bitset<128> idGenerate(const std::vector<uint_fast16_t>& id) noexcept {
@@ -203,11 +203,12 @@ std::bitset<128> idGenerate(const std::vector<uint_fast16_t>& id) noexcept {
     }
 }
 
-bool loadProbabilities (const std::vector<uint_fast16_t>& key,
+LoadedValue loadProbabilities (const std::vector<uint_fast16_t>& key,
                         const std::vector<uint_fast16_t>& rowOrder,
                         const std::vector<uint_fast16_t>& columnOrder,
                         Matrix<double>& probabilities) noexcept
 {
+    LoadedValue output;
     const std::bitset<128> s = idGenerate(key);
     //const std::string s = idToString(key);
     //seasonLog[seasonId].insert(s);
@@ -215,18 +216,21 @@ bool loadProbabilities (const std::vector<uint_fast16_t>& key,
     //bool deadEnd = computedDeadEnds[s];
     if (it == computedProbabilities.end()) {
         // No saved value
-        return false;
+        return output;
     }
     else {
+        // saved value but deadEnd
         if (computedDeadEnds[s]) {
-            return false;
+            output.SavedValue = true;
+            output.DeadEnd = true;
+            probabilities.clear();
+            return output;
         }
     }
-    //auto temp = computedProbabilities[s];
-    sortMatrix(computedProbabilities[s], rowOrder, columnOrder, probabilities, true);
-    // We have a saved value
-
-    return true;
+    // saved value and no deadEnd
+    sortMatrix(it->second, rowOrder, columnOrder, probabilities, true);
+    output.SavedValue = true;
+    return output;
 }
 
 void saveProbabilities(const std::vector<uint_fast16_t>& key,
@@ -249,45 +253,39 @@ bool computeProbabilities(const Matrix<bool>& compatibilityMatrix,
                           int unmatchedRunnerUp=-1)
 {
     auto size = static_cast<uint_fast16_t>(compatibilityMatrix.size());
-
-    if (probabilities.empty()) {
-        for (uint_fast16_t i = 0; i < size; ++i) {
-            std::vector<double> row;
-            for (uint_fast16_t j = 0; j < size; ++j) {
-                row.push_back(0);
-            }
-            probabilities.push_back(row);
-        }
-    }
-    else {
-        for (std::vector<double>& row : probabilities) {
-            for (double& value : row) {
-                value = 0.0;
-            }
-        }
-    }
+    probabilities.clear();
 
     std::vector<uint_fast16_t> key;
     std::vector<uint_fast16_t> rowOrder;
     std::vector<uint_fast16_t> columnOrder;
     Matrix<double> conditionalProbabilities;
-    bool deadEnd = false;
+    bool output = false;
 
     if (unmatchedRunnerUp == -1) {
         generateSortedId(compatibilityMatrix, key, rowOrder, columnOrder);
-        Matrix<double> cachedProbabilities{};
-        bool savedValue = loadProbabilities(key, rowOrder, columnOrder, cachedProbabilities);
-        if (savedValue){
-            probabilities = cachedProbabilities;
-            return false;
+        //Matrix<double> cachedProbabilities{};
+        auto check = loadProbabilities(key, rowOrder, columnOrder, probabilities);
+        if (check.SavedValue){
+            //probabilities = cachedProbabilities;
+            if (check.DeadEnd) {
+                return true;
+            }
+            else {
+                return false;
+            }
         }
     }
+
+    for (uint_fast16_t i = 0; i < size; ++i) {
+    probabilities.emplace_back(size, 0);
+    }
+
 
     int options = 0;
     if (unmatchedRunnerUp == -1) {
         for(uint_fast16_t i = 0; i < size; ++i) {
             options++;
-            deadEnd = computeProbabilities(compatibilityMatrix, conditionalProbabilities, i);
+            auto deadEnd = computeProbabilities(compatibilityMatrix, conditionalProbabilities, i);
             if (deadEnd) {
                 options--;
             }
@@ -300,7 +298,8 @@ bool computeProbabilities(const Matrix<bool>& compatibilityMatrix,
             }
         }
         if (options == 0 && size > 0) {
-            deadEnd = true;
+            probabilities.clear();
+            output = true;
         }
     }
     else {
@@ -320,7 +319,7 @@ bool computeProbabilities(const Matrix<bool>& compatibilityMatrix,
                     }
                 }
 
-                deadEnd = computeProbabilities(subMatrix, conditionalProbabilities);
+                auto deadEnd = computeProbabilities(subMatrix, conditionalProbabilities);
                 if (deadEnd) {
                     options--;
                 }
@@ -350,7 +349,8 @@ bool computeProbabilities(const Matrix<bool>& compatibilityMatrix,
             }
         }
         if (options == 0) {
-            deadEnd = true;
+            probabilities.clear();
+            output = true;
         }
     }
     if (options != 0) {
@@ -361,10 +361,10 @@ bool computeProbabilities(const Matrix<bool>& compatibilityMatrix,
         }
     }
     if (unmatchedRunnerUp == -1) {
-        saveProbabilities(key, rowOrder, columnOrder, probabilities, deadEnd);
+        saveProbabilities(key, rowOrder, columnOrder, probabilities, output);
     }
 
-    return deadEnd;
+    return output;
 }
 
 
