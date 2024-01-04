@@ -104,7 +104,7 @@ def loadProbabilities(id):
     seasonLog[seasonId].add(s)
     temp = computedProbabilities.get(s)
     
-    if temp is None:
+    if (temp is None) or (temp == []):
         return temp
     
     probabilities = sortMatrix(temp, id[1], id[2], True)
@@ -112,10 +112,9 @@ def loadProbabilities(id):
 
 def saveProbabilities(id, probabilities):
     s = idToString(id[0])
-    computedProbabilities[s] = probabilities
     
-    if probabilities is None:
-        computedProbabilities[s] = None
+    if (probabilities is None) or (probabilities == []):
+        computedProbabilities[s] = probabilities
     else:
         temp = sortMatrix(probabilities, id[1], id[2])
         computedProbabilities[s] = temp
