@@ -8,14 +8,14 @@
 #include <chrono>
 
 
-constexpr static char numTeams = 8;
+constexpr static char numTeams = 9;
 double counter = 0.0;
 template <typename T>
 using Matrix = std::vector<std::vector<T>>;
 uint count = 0;
 
-const static std::array<std::array<std::string, 2>, numTeams> winners = {{{"A","DE"}, {"B","EN"}, {"C","ES"}, {"D","ES"}, {"E","ES"}, {"F","DE"}, {"G","EN"}, {"H","ES"}}};
-const static std::array<std::array<std::string, 2>, numTeams> runnersUp = {{{"A","DEN"}, {"B","DEN"}, {"C","IT"}, {"D","IT"}, {"E","IT"}, {"F","FR"}, {"G","DE"}, {"H","PR"}}};
+const static std::array<std::array<std::string, 2>, numTeams> winners = {{{"A","DE"}, {"B","EN"}, {"C","ES"}, {"D","ES"}, {"E","ES"}, {"F","DE"}, {"G","EN"}, {"H","ES"}, {"I", "EN"}}};
+const static std::array<std::array<std::string, 2>, numTeams> runnersUp = {{{"A","DEN"}, {"B","DEN"}, {"C","IT"}, {"D","IT"}, {"E","IT"}, {"F","FR"}, {"G","DE"}, {"H","PR"}, {"I", "ES"}}};
 
 
 static std::unordered_map<std::bitset<128>, Matrix<double>> computedProbabilities;
@@ -26,9 +26,15 @@ static Matrix<bool> fullCompatibilityMatrix(numTeams, std::vector<bool>(numTeams
 static std::bitset<128> seasonId;
 static std::unordered_map<std::bitset<128>, std::set<std::string>> seasonLog;
 
-struct LoadedValue {
+struct loadedValue {
     bool SavedValue = false;
     bool DeadEnd = false;
+};
+
+struct iD {
+    std::vector<uint_fast16_t> key;
+    std::vector<uint_fast16_t> rowOrder;
+    std::vector<uint_fast16_t> columnOrder;
 };
 
 template <typename T>
@@ -76,7 +82,7 @@ void sortMatrix(const Matrix<T>& matrix_input,
 void generateUnsortedId(const Matrix<bool>& matrix,
                         const std::vector<uint_fast16_t>& order,
                         const bool rowMode,
-                        Matrix<uint_fast16_t>& id) noexcept {
+                        std::vector<std::pair<uint_fast16_t, uint_fast16_t>>& id) noexcept {
 
     const auto size = static_cast<uint_fast16_t>(matrix.size());
     bool entry;
@@ -94,34 +100,35 @@ void generateUnsortedId(const Matrix<bool>& matrix,
                 temp |= 1;
             }
         }
-        id[i][0] = temp;
-        id[i][1] = order[i];
+        id[i].first = temp;
+        id[i].second = order[i];
     }
 }
 
 void generateSortedId(const Matrix<bool>& compatibilityMatrix,
-                      std::vector<uint_fast16_t>& key,
-                      std::vector<uint_fast16_t>& rowOrder,
-                      std::vector<uint_fast16_t>& columnOrder) noexcept
+                      iD& idOut) noexcept
 {
     bool row = true;
     bool sorted[2] = {false, false};
-    Matrix<uint_fast16_t> id(compatibilityMatrix.size(), std::vector<uint_fast16_t>(2, 0));
-    Matrix<uint_fast16_t> subId(compatibilityMatrix.size(), std::vector<uint_fast16_t>(2, 0));
-    auto size = static_cast<uint_fast16_t>(subId.size());
+    auto size = static_cast<uint_fast16_t>(compatibilityMatrix.size());
+    auto id = std::vector<std::pair<uint_fast16_t, uint_fast16_t>>(size, {0, 0});
+    auto subId = std::vector<std::pair<uint_fast16_t, uint_fast16_t>>(size, {0, 0});
+    //Matrix<uint_fast16_t> id(compatibilityMatrix.size(), std::vector<uint_fast16_t>(2, 0));
+    //Matrix<uint_fast16_t> subId(compatibilityMatrix.size(), std::vector<uint_fast16_t>(2, 0));
+
     auto matrix2 = compatibilityMatrix;
-    if(key.empty()) {
+    if(idOut.key.empty()) {
         for (uint_fast16_t i = 0; i < size; ++i) {
-            rowOrder.push_back(i);
-            columnOrder.push_back(i);
-            key.push_back(0);
+            idOut.rowOrder.push_back(i);
+            idOut.columnOrder.push_back(i);
+            idOut.key.push_back(0);
         }
     }
     uint_fast16_t maximum;
 
     while (true) {
-        std::vector<uint_fast16_t>& order = row ? rowOrder : columnOrder;
-        Matrix<uint_fast16_t>& id_ref = row ? id : subId;
+        std::vector<uint_fast16_t>& order = row ? idOut.rowOrder : idOut.columnOrder;
+        std::vector<std::pair<uint_fast16_t, uint_fast16_t>>& id_ref = row ? id : subId;
 
         generateUnsortedId(matrix2, order, row, id_ref);
         sorted[row ? 0 : 1] = true;
@@ -129,37 +136,33 @@ void generateSortedId(const Matrix<bool>& compatibilityMatrix,
 
 
         for (uint_fast16_t i = 0; i < size; ++i) {
-            if (id_ref[i][0] < maximum) {
+            if (id_ref[i].first < maximum) {
                 sorted[row ? 0 : 1] = false;
                 break;
             } else {
-                maximum = id_ref[i][0];
+                maximum = id_ref[i].first;
             }
         }
         if (!sorted[row ? 0 : 1]) {
             std::sort(id_ref.begin(), id_ref.end(), [](const auto& a, const auto& b) {
-                return a[0] < b[0];
+                return a.first < b.first;
             });
 
             for (uint_fast16_t i = 0; i < size; ++i) {
-                order[i] = id_ref[i][1];
+                order[i] = id_ref[i].second;
             }
         }
-
-        // if (row) {
-        //     id = subId;
-        // }
 
         if (sorted[0] && sorted[1]) {
             break;
         }
 
-        sortMatrix(compatibilityMatrix, rowOrder, columnOrder, matrix2);
+        sortMatrix(compatibilityMatrix, idOut.rowOrder, idOut.columnOrder, matrix2);
         row = !row;
     }
 
     for (uint_fast16_t i = 0; i < size; ++i) {
-        key[i] = id[i][0];
+        idOut.key[i] = id[i].first;
     }
 
 }
@@ -203,15 +206,12 @@ std::bitset<128> idGenerate(const std::vector<uint_fast16_t>& id) noexcept {
     }
 }
 
-LoadedValue loadProbabilities (const std::vector<uint_fast16_t>& key,
-                        const std::vector<uint_fast16_t>& rowOrder,
-                        const std::vector<uint_fast16_t>& columnOrder,
+loadedValue loadProbabilities (const iD id,
                         Matrix<double>& probabilities) noexcept
 {
-    LoadedValue output;
-    const std::bitset<128> s = idGenerate(key);
+    loadedValue output;
+    const std::bitset<128> s = idGenerate(id.key);
     //const std::string s = idToString(key);
-    //seasonLog[seasonId].insert(s);
     auto it = computedProbabilities.find(s);
     //bool deadEnd = computedDeadEnds[s];
     if (it == computedProbabilities.end()) {
@@ -228,23 +228,21 @@ LoadedValue loadProbabilities (const std::vector<uint_fast16_t>& key,
         }
     }
     // saved value and no deadEnd
-    sortMatrix(it->second, rowOrder, columnOrder, probabilities, true);
+    sortMatrix(it->second, id.rowOrder, id.columnOrder, probabilities, true);
     output.SavedValue = true;
     return output;
 }
 
-void saveProbabilities(const std::vector<uint_fast16_t>& key,
-                       const std::vector<uint_fast16_t>& rowOrder,
-                       const std::vector<uint_fast16_t>& columnOrder,
+void saveProbabilities(const iD id,
                        Matrix<double>& probabilities,
                        const bool deadEnd) noexcept
 {
-    const std::bitset<128> s = idGenerate(key);
+    const std::bitset<128> s = idGenerate(id.key);
     //const std::string s = idToString(key);
     computedProbabilities[s] = probabilities;
     computedDeadEnds[s] = deadEnd;
     if (!probabilities.empty()) {
-        sortMatrix(probabilities, rowOrder, columnOrder, computedProbabilities[s]);
+        sortMatrix(probabilities, id.rowOrder, id.columnOrder, computedProbabilities[s]);
     }
 }
 
@@ -255,18 +253,14 @@ bool computeProbabilities(const Matrix<bool>& compatibilityMatrix,
     auto size = static_cast<uint_fast16_t>(compatibilityMatrix.size());
     probabilities.clear();
 
-    std::vector<uint_fast16_t> key;
-    std::vector<uint_fast16_t> rowOrder;
-    std::vector<uint_fast16_t> columnOrder;
+    iD id;
     Matrix<double> conditionalProbabilities;
     bool output = false;
 
     if (unmatchedRunnerUp == -1) {
-        generateSortedId(compatibilityMatrix, key, rowOrder, columnOrder);
-        //Matrix<double> cachedProbabilities{};
-        auto check = loadProbabilities(key, rowOrder, columnOrder, probabilities);
+        generateSortedId(compatibilityMatrix, id);
+        auto check = loadProbabilities(id, probabilities);
         if (check.SavedValue){
-            //probabilities = cachedProbabilities;
             if (check.DeadEnd) {
                 return true;
             }
@@ -361,7 +355,7 @@ bool computeProbabilities(const Matrix<bool>& compatibilityMatrix,
         }
     }
     if (unmatchedRunnerUp == -1) {
-        saveProbabilities(key, rowOrder, columnOrder, probabilities, output);
+        saveProbabilities(id, probabilities, output);
     }
 
     return output;
@@ -380,16 +374,9 @@ void initialize() {
             fullCompatibilityMatrix[i][j] = temp;
         }
     }
-    std::vector<uint_fast16_t> rowOrder;
-    std::vector<uint_fast16_t> columnOrder;
-    std::vector<uint_fast16_t> key;
-    for (uint_fast16_t i = 0; i < fullCompatibilityMatrix.size(); ++i) {
-        rowOrder.push_back(i);
-        columnOrder.push_back(i);
-        key.push_back(0);
-    }
-    generateSortedId(fullCompatibilityMatrix, key, rowOrder, columnOrder);
-    seasonId = idGenerate(key);
+    iD id;
+    generateSortedId(fullCompatibilityMatrix, id);
+    seasonId = idGenerate(id.key);
     //seasonId = idToString(key);
     seasonLog.insert({seasonId, std::set<std::string>()});
 
@@ -399,28 +386,8 @@ void initialize() {
 int main()
 {
     initialize();
-    /*
-    for (size_t i = 0; i < numTeams; ++i) {
-        for (size_t j = 0; j < numTeams; ++j) {
-            std::cout << fullCompatibilityMatrix[i][j] << " ";
-        }
-        std::cout << "\n";
-    }
-    */
-    std::vector<uint_fast16_t> rowOrder;
-    std::vector<uint_fast16_t> columnOrder;
-    std::vector<uint_fast16_t> key;
-    for (uint_fast16_t i = 0; i < fullCompatibilityMatrix.size(); ++i) {
-        rowOrder.push_back(i);
-        columnOrder.push_back(i);
-        key.push_back(0);
-    }
-    generateSortedId(fullCompatibilityMatrix, key, rowOrder, columnOrder);
-    //for (size_t i = 0; i < fullCompatibilityMatrix.size(); ++i) {
-    //        std::cout << key[i] << " ";
-    //    }
-    //    std::cout << "\n";
-
+    iD id;
+    generateSortedId(fullCompatibilityMatrix, id);
 
     Matrix<double> probabilities(fullCompatibilityMatrix.size(), std::vector<double>(fullCompatibilityMatrix.size(), 0.0));
 
@@ -433,33 +400,6 @@ int main()
     printMatrix(probabilities);
     std::size_t numberOfElements = computedProbabilities.size();
     std::cout << "Number of elements in the map: " << numberOfElements << std::endl;
-
-
-
-
-    // if (probabilities.empty()){
-    //     std::cout << "Probabilities is empty";
-    // }
-    // std::cout << "\n";
-    // std::cout << "\n";
-    // for (uint i = 0; i < probabilities.size(); ++i) {
-    //     for (uint j = 0; j < probabilities.size(); ++j) {
-    //         std::cout << probabilities[i][j] <<", ";
-    //     }
-    //     std::cout << "\n";
-    // }
-
-    // Matrix<bool> CM{
-    //     {false, true},
-    //     {true, false}
-    // };
-    // int unmatched = 1;
-
-
-
-    // computeProbabilities(CM, probabilities, unmatched);
-    // std::cout << "\n";
-    // printMatrix(probabilities);
 
     return 0;
 }
