@@ -1,41 +1,8 @@
-#include <iostream>
-#include <iomanip>
-#include <unordered_map>
-#include <vector>
-#include <array>
-#include <set>
-#include <sstream>
-#include <chrono>
 
+#include "CL_Draws.h"
 
-constexpr static char numTeams = 9;
-double counter = 0.0;
-template <typename T>
-using Matrix = std::vector<std::vector<T>>;
-uint count = 0;
-
-const static std::array<std::array<std::string, 2>, numTeams> winners = {{{"A","DE"}, {"B","EN"}, {"C","ES"}, {"D","ES"}, {"E","ES"}, {"F","DE"}, {"G","EN"}, {"H","ES"}, {"I", "EN"}}};
-const static std::array<std::array<std::string, 2>, numTeams> runnersUp = {{{"A","DEN"}, {"B","DEN"}, {"C","IT"}, {"D","IT"}, {"E","IT"}, {"F","FR"}, {"G","DE"}, {"H","PR"}, {"I", "ES"}}};
-
-
-static std::unordered_map<std::bitset<128>, Matrix<double>> computedProbabilities;
-static std::unordered_map<std::bitset<128>, bool> computedDeadEnds;
-
-static Matrix<bool> fullCompatibilityMatrix(numTeams, std::vector<bool>(numTeams, false));
-//static std::string seasonId = "0";
-static std::bitset<128> seasonId;
-static std::unordered_map<std::bitset<128>, std::set<std::string>> seasonLog;
-
-struct loadedValue {
-    bool SavedValue = false;
-    bool DeadEnd = false;
-};
-
-struct iD {
-    std::vector<uint_fast16_t> key;
-    std::vector<uint_fast16_t> rowOrder;
-    std::vector<uint_fast16_t> columnOrder;
-};
+std::unordered_map<std::bitset<128>, Matrix<double>> computedProbabilities;
+std::unordered_map<std::bitset<128>, bool> computedDeadEnds;
 
 template <typename T>
 void printMatrix (const Matrix<T>& matrix) {
@@ -57,7 +24,7 @@ void sortMatrix(const Matrix<T>& matrix_input,
                 const std::vector<uint_fast16_t>& rowOrder,
                 const std::vector<uint_fast16_t>& columnOrder,
                 Matrix<T>& matrix_output,
-                bool inverse = false) noexcept
+                bool inverse) noexcept
 {
     if (matrix_output.size() != matrix_input.size()) {
         matrix_output = matrix_input;
@@ -164,29 +131,7 @@ void generateSortedId(const Matrix<bool>& compatibilityMatrix,
     for (uint_fast16_t i = 0; i < size; ++i) {
         idOut.key[i] = id[i].first;
     }
-
 }
-
-// std::string idToString(const std::vector<uint_fast16_t>& id) {
-//     std::string str;
-//     str.reserve(4*id.size());
-//     std::stringstream ss(str);
-//     auto size = static_cast<uint_fast16_t>(id.size());
-
-//     for (uint_fast16_t i = 0; i < size; ++i) {
-//         if (id[i] < 16) {
-//             ss << std::setfill('0') << std::setw(4) << std::hex << id[i];
-//         } else if (id[i] < 256) {
-//             ss << std::setfill('0') << std::setw(3) << std::hex << id[i];
-//         } else if (id[i] < 4096) {
-//             ss << std::setfill('0') << std::setw(2) << std::hex << id[i];
-//         } else {
-//             ss << std::hex << id[i];
-//         }
-//     }
-//     return ss.str();
-// }
-
 
 std::bitset<128> idGenerate(const std::vector<uint_fast16_t>& id) noexcept {
     auto size = static_cast<uint_fast16_t>(id.size());
@@ -206,8 +151,8 @@ std::bitset<128> idGenerate(const std::vector<uint_fast16_t>& id) noexcept {
     }
 }
 
-loadedValue loadProbabilities (const iD id,
-                        Matrix<double>& probabilities) noexcept
+loadedValue loadProbabilities(const iD& id,
+                               Matrix<double>& probabilities) noexcept
 {
     loadedValue output;
     const std::bitset<128> s = idGenerate(id.key);
@@ -233,7 +178,7 @@ loadedValue loadProbabilities (const iD id,
     return output;
 }
 
-void saveProbabilities(const iD id,
+void saveProbabilities(const iD& id,
                        Matrix<double>& probabilities,
                        const bool deadEnd) noexcept
 {
@@ -248,7 +193,7 @@ void saveProbabilities(const iD id,
 
 bool computeProbabilities(const Matrix<bool>& compatibilityMatrix,
                           Matrix<double>& probabilities,
-                          int unmatchedRunnerUp=-1)
+                          int unmatchedRunnerUp) noexcept
 {
     auto size = static_cast<uint_fast16_t>(compatibilityMatrix.size());
     probabilities.clear();
@@ -361,8 +306,9 @@ bool computeProbabilities(const Matrix<bool>& compatibilityMatrix,
     return output;
 }
 
-
-void initialize() {
+void getProbabilities(const Matrix<std::string>& winners, const Matrix<std::string>& runnersUp) {
+    const uint_fast16_t numTeams = static_cast<uint_fast16_t>(winners.size());
+    Matrix<bool> fullCompatibilityMatrix(numTeams, std::vector<bool>(numTeams, false));
     for (size_t i = 0; i < numTeams; ++i) {
         for (size_t j = 0; j < numTeams; ++j) {
             bool temp = true;
@@ -374,32 +320,22 @@ void initialize() {
             fullCompatibilityMatrix[i][j] = temp;
         }
     }
-    iD id;
-    generateSortedId(fullCompatibilityMatrix, id);
-    seasonId = idGenerate(id.key);
-    //seasonId = idToString(key);
-    seasonLog.insert({seasonId, std::set<std::string>()});
-
-};
-
-
-int main()
-{
-    initialize();
-    iD id;
-    generateSortedId(fullCompatibilityMatrix, id);
-
-    Matrix<double> probabilities(fullCompatibilityMatrix.size(), std::vector<double>(fullCompatibilityMatrix.size(), 0.0));
-
+    Matrix<double> probabilities(numTeams, std::vector<double>(numTeams, 0.0));
     auto start = std::chrono::high_resolution_clock::now();
     computeProbabilities(fullCompatibilityMatrix, probabilities);
     auto stop = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-    std::cout << "Time taken by function: " << duration.count() << " milliseconds." << std::endl;
+    std::cout << "Time taken to compute probabilities: " << duration.count() << " milliseconds." << std::endl;
 
     printMatrix(probabilities);
-    std::size_t numberOfElements = computedProbabilities.size();
-    std::cout << "Number of elements in the map: " << numberOfElements << std::endl;
-
-    return 0;
 }
+
+// int main()
+// {
+//     const Matrix<std::string> winners = {{"A","DE"}, {"B","EN"}, {"C","ES"}, {"D","ES"}, {"E","ES"}, {"F","DE"}, {"G","EN"}, {"H","ES"}};
+//     const Matrix<std::string> runnersUp = {{"A","DEN"}, {"B","DEN"}, {"C","IT"}, {"D","IT"}, {"E","IT"}, {"F","FR"}, {"G","DE"}, {"H","PR"}};
+
+//     getProbabilities(winners, runnersUp);
+
+//     return 0;
+// }
